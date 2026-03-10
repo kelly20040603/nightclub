@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOCTURNE | 複合式餐酒館</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: '#050505',
+                        light: '#EAEAEA',
+                        gold: '#D4AF37',
+                        accent: '#8C1C13'
+                    },
+                    fontFamily: {
+                        sans: ['Manrope', 'sans-serif'],
+                        serif: ['Playfair Display', 'serif'],
+                    },
+                    borderRadius: {
+                        'xl': '1rem',
+                        '2xl': '1.5rem',
+                        '3xl': '2rem',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+
+    <style>
+        :root {
+            --cursor-size: 20px;
+        }
+
+        body {
+            background-color: #050505;
+            color: #EAEAEA;
+            overflow-x: hidden;
+            cursor: none;
+        }
+
+        /* Global Noise Texture */
+        .noise-bg {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; z-index: 9998; opacity: 0.04;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+
+        /* Custom Cursor */
+        .cursor-dot, .cursor-outline {
+            position: fixed;
+            top: 0; left: 0;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            z-index: 9999;
+            pointer-events: none;
+            mix-blend-mode: difference;
+        }
+        .cursor-dot {
+            width: 8px; height: 8px;
+            background-color: white;
+        }
+        .cursor-outline {
+            width: 40px; height: 40px;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            transition: width 0.3s, height 0.3s, background-color 0.3s;
+        }
+        .cursor-hover .cursor-outline {
+            width: 80px; height: 80px;
+            background-color: rgba(255, 255, 255, 1);
+            border-color: transparent;
+        }
+
+        /* WebGL Canvas */
+        #webgl-canvas {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Vertical Reference Lines */
+        .grid-lines {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            display: grid; grid-template-columns: repeat(4, 1fr);
+            pointer-events: none; z-index: 0;
+        }
+        .grid-line {
+            border-left: 1px solid rgba(255, 255, 255, 0.03);
+            height: 100%;
+        }
+
+        /* 4-Column Clip Dropdown Loader */
+        .clip-col {
+            position: absolute;
+            top: 0; height: 100vh;
+            background-color: #050505;
+            z-index: 9900;
+            will-change: transform;
+        }
+        .clip-col:nth-child(1) { left: 0; width: 25%; }
+        .clip-col:nth-child(2) { left: 25%; width: 25%; }
+        .clip-col:nth-child(3) { left: 50%; width: 25%; }
+        .clip-col:nth-child(4) { left: 75%; width: 25%; }
+
+        .loader-text {
+            position: fixed;
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 9910;
+            mix-blend-mode: difference;
+        }
+
+        /* Utilities */
+        .text-stroke {
+            -webkit-text-stroke: 1px rgba(255,255,255,0.2);
+            color: transparent;
+        }
+        .clip-text {
+            clip-path: polygon(0 100%, 100% 100%, 100% 100%, 0% 100%);
+        }
+        .glass-panel {
+            background: rgba(10, 10, 10, 0.4);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        @media (max-width: 768px) {
+            .grid-lines { grid-template-columns: repeat(2, 1fr); }
+            .clip-col:nth-child(1) { width: 50%; }
+            .clip-col:nth-child(2) { left: 50%; width: 50%; }
+            .clip-col:nth-child(3), .clip-col:nth-child(4) { display: none; }
+            body { cursor: auto; }
+            .cursor-dot, .cursor-outline { display: none; }
+        }
+    </style>
+</head>
+<body class="antialiased selection:bg-gold selection:text-dark">
+
+    <!-- Global Assets -->
+    <div class="noise-bg"></div>
+    <div class="cursor-dot"></div>
+    <div class="cursor-outline"></div>
+    <canvas id="webgl-canvas"></canvas>
+
+    <!-- Reference Lines -->
+    <div class="grid-lines">
+        <div class="grid-line"></div>
+        <div class="grid-line"></div>
+        <div class="grid-line"></div>
+        <div class="grid-line"></div>
+    </div>
+
+    <!-- 4-Column Intro Loader -->
+    <div id="loader" class="fixed inset-0 z-[9900] pointer-events-none">
+        <div class="clip-col origin-bottom"></div>
+        <div class="clip-col origin-top"></div>
+        <div class="clip-col origin-bottom"></div>
+        <div class="clip-col origin-top"></div>
+    </div>
+    <div class="loader-text font-serif text-4xl md:text-7xl font-bold tracking-widest text-white uppercase" id="loaderText">
+        Nocturne
+    </div>
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 left-0 w-full p-6 md:p-10 flex justify-between items-center z-50 mix-blend-difference">
+        <div class="font-serif text-2xl font-bold tracking-widest uppercase hover-trigger">NOCTURNE</div>
+        <div class="hidden md:flex space-x-12 font-sans text-sm tracking-widest uppercase">
+            <a href="#vision" class="hover:text-gold transition-colors duration-300 hover-trigger">Vision</a>
+            <a href="#alchemy" class="hover:text-gold transition-colors duration-300 hover-trigger">Alchemy</a>
+            <a href="#cuisine" class="hover:text-gold transition-colors duration-300 hover-trigger">Cuisine</a>
+        </div>
+        <button class="glass-panel px-6 py-3 rounded-full font-sans text-sm tracking-widest uppercase hover:bg-white hover:text-dark transition-all duration-300 hover-trigger">
+            Reservation
+        </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="relative z-10">
+        
+        <!-- Hero Section -->
+        <section class="relative w-full h-screen flex flex-col justify-center items-center overflow-hidden pt-20">
+            <div class="text-center mix-blend-difference z-20">
+                <p class="font-sans text-sm md:text-base tracking-[0.5em] text-gray-300 mb-6 uppercase gs-reveal">A Symphony of</p>
+                <h1 class="font-serif text-6xl md:text-[10vw] leading-none font-bold uppercase tracking-tight text-white mb-4">
+                    <span class="block gs-reveal">Gastronomy</span>
+                    <span class="block gs-reveal text-stroke">& Mixology</span>
+                </h1>
+                <p class="font-sans text-sm md:text-lg max-w-xl mx-auto text-gray-400 mt-8 gs-reveal">
+                    Where culinary artistry meets liquid alchemy in an immersive nocturnal landscape.
+                </p>
+            </div>
+            
+            <!-- Floating Hero Image -->
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg md:max-w-2xl h-[60vh] z-10 opacity-60 mix-blend-luminosity parallax-img">
+                <img src="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&w=1920&q=80" alt="Cocktail" class="w-full h-full object-cover rounded-3xl" />
+            </div>
+
+            <!-- Scroll Indicator -->
+            <div class="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gs-reveal">
+                <span class="font-sans text-xs tracking-widest uppercase mb-2">Scroll</span>
+                <div class="w-[1px] h-12 bg-white/30 overflow-hidden relative">
+                    <div class="w-full h-full bg-white absolute top-0 left-0 animate-[scrollDown_2s_ease-in-out_infinite]"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Vision / Core Values -->
+        <section id="vision" class="relative w-full py-32 md:py-48 px-6 md:px-10">
+            <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-10">
+                <div class="md:col-span-4 flex flex-col justify-between">
+                    <div>
+                        <span class="font-serif text-gold text-2xl italic">01 /</span>
+                        <h2 class="font-serif text-4xl md:text-5xl mt-4 mb-8">The Philosophy</h2>
+                    </div>
+                    <p class="font-sans text-gray-400 leading-relaxed text-lg max-w-sm">
+                        Redefining the bistro experience through sensory design, avant-garde flavors, and an atmosphere that breathes with the night.
+                    </p>
+                </div>
+                
+                <div class="md:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <!-- Value 1 -->
+                    <div class="glass-panel p-8 rounded-2xl group hover-trigger">
+                        <iconify-icon icon="solar:chef-hat-broken" width="40" class="text-gold mb-6 transition-transform duration-500 group-hover:scale-110"></iconify-icon>
+                        <h3 class="font-serif text-2xl mb-4">Culinary Artistry</h3>
+                        <p class="font-sans text-sm text-gray-400 leading-relaxed">
+                            A borderless approach to fine dining, merging local terroirs with global techniques to create disruptive yet comforting plates.
+                        </p>
+                    </div>
+                    <!-- Value 2 -->
+                    <div class="glass-panel p-8 rounded-2xl group hover-trigger md:mt-12">
+                        <iconify-icon icon="solar:glass-water-broken" width="40" class="text-gold mb-6 transition-transform duration-500 group-hover:scale-110"></iconify-icon>
+                        <h3 class="font-serif text-2xl mb-4">Liquid Alchemy</h3>
+                        <p class="font-sans text-sm text-gray-400 leading-relaxed">
+                            Craft cocktails designed as narrative arcs. Each sip explores complex flavor profiles through modern clarification and infusion.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Gallery / Menu Peek (4 Column Staggered Scroll Concept) -->
+        <section id="cuisine" class="relative w-full py-20 overflow-hidden">
+            <div class="flex flex-col md:flex-row w-full h-[120vh] md:h-[80vh] gap-4 px-4">
+                
+                <!-- Col 1 -->
+                <div class="flex-1 relative rounded-2xl overflow-hidden group hover-trigger stag-col">
+                    <img src="https://images.unsplash.com/photo-1600891964092-4316c288032e?auto=format&fit=crop&w=800&q=80" class="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110 group-hover:opacity-60" alt="Fine Dining">
+                    <div class="absolute inset-0 bg-gradient-to-t from-dark/90 to-transparent flex flex-col justify-end p-8 translate-y-8 group-hover:translate-y-0 transition-transform duration-500">
+                        <span class="font-serif text-gold text-lg italic mb-2">01</span>
+                        <h3 class="font-serif text-2xl uppercase">Tasting Menu</h3>
+                    </div>
+                </div>
+
+                <!-- Col 2 -->
+                <div class="flex-1 relative rounded-2xl overflow-hidden group hover-trigger stag-col md:mt-16">
+                    <img src="https://images.unsplash.com/photo-1556679343-c7306c1976bc?auto=format&fit=crop&w=800&q=80" class="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110 group-hover:opacity-60 grayscale group-hover:grayscale-0" alt="Mixology">
+                    <div class="absolute inset-0 bg-gradient-to-t from-dark/90 to-transparent flex flex-col justify-end p-8 translate-y-8 group-hover:translate-y-0 transition-transform duration-500">
+                        <span class="font-serif text-gold text-lg italic mb-2">02</span>
+                        <h3 class="font-serif text-2xl uppercase">Signatures</h3>
+                    </div>
+                </div>
+
+                <!-- Col 3 -->
+                <div class="flex-1 relative rounded-2xl overflow-hidden group hover-trigger stag-col">
+                    <img src="https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=800&q=80" class="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110 group-hover:opacity-60" alt="Ambiance">
+                    <div class="absolute inset-0 bg-gradient-to-t from-dark/90 to-transparent flex flex-col justify-end p-8 translate-y-8 group-hover:translate-y-0 transition-transform duration-500">
+                        <span class="font-serif text-gold text-lg italic mb-2">03</span>
+                        <h3 class="font-serif text-2xl uppercase">The Lounge</h3>
+                    </div>
+                </div>
+
+                <!-- Col 4 -->
+                <div class="flex-1 relative rounded-2xl overflow-hidden group hover-trigger stag-col md:mt-16">
+                    <img src="https://images.unsplash.com/photo-1574071318508-1cdbab80d002?auto=format&fit=crop&w=800&q=80" class="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110 group-hover:opacity-60 grayscale group-hover:grayscale-0" alt="Wine Cellar">
+                    <div class="absolute inset-0 bg-gradient-to-t from-dark/90 to-transparent flex flex-col justify-end p-8 translate-y-8 group-hover:translate-y-0 transition-transform duration-500">
+                        <span class="font-serif text-gold text-lg italic mb-2">04</span>
+                        <h3 class="font-serif text-2xl uppercase">Cellar</h3>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- CTA & Partners -->
+        <section class="relative w-full py-32 flex flex-col items-center justify-center text-center px-4">
+            <h2 class="font-serif text-5xl md:text-7xl mb-8 uppercase tracking-wide">Immerse <br> <span class="text-stroke">in the Night</span></h2>
+            <button class="magnetic-btn glass-panel px-10 py-5 rounded-full font-sans text-sm tracking-widest uppercase hover:bg-white hover:text-dark transition-colors duration-300 hover-trigger relative overflow-hidden group">
+                <span class="relative z-10">Book a Table</span>
+            </button>
+
+            <!-- Global Partners -->
+            <div class="mt-32 w-full max-w-4xl mx-auto border-t border-white/10 pt-16">
+                <p class="font-sans text-xs tracking-widest text-gray-500 uppercase mb-8">Recognized By & Partners</p>
+                <div class="flex flex-wrap justify-center gap-12 md:gap-20 opacity-50">
+                    <iconify-icon icon="simple-icons:michelin" width="40" class="hover:text-white transition-colors duration-300 hover-trigger"></iconify-icon>
+                    <iconify-icon icon="simple-icons:ubereats" width="40" class="hover:text-white transition-colors duration-300 hover-trigger"></iconify-icon>
+                    <iconify-icon icon="simple-icons:visa" width="40" class="hover:text-white transition-colors duration-300 hover-trigger"></iconify-icon>
+                    <iconify-icon icon="simple-icons:mastercard" width="40" class="hover:text-white transition-colors duration-300 hover-trigger"></iconify-icon>
+                    <iconify-icon icon="simple-icons:porsche" width="40" class="hover:text-white transition-colors duration-300 hover-trigger"></iconify-icon>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="w-full py-10 border-t border-white/5 flex flex-col md:flex-row justify-between items-center px-10 text-xs font-sans tracking-widest text-gray-500">
+            <div>&copy; 2024 NOCTURNE GASTROBAR. ALL RIGHTS RESERVED.</div>
+            <div class="flex gap-6 mt-4 md:mt-0">
+                <a href="#" class="hover:text-white hover-trigger">INSTAGRAM</a>
+                <a href="#" class="hover:text-white hover-trigger">FACEBOOK</a>
+            </div>
+        </footer>
+
+    </main>
+
+    <script>
+        // Keyframes for Tailwind
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes scrollDown {
+                0% { transform: translateY(-100%); }
+                50% { transform: translateY(0); }
+                100% { transform: translateY(100%); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // --- Custom Cursor ---
+        const cursorDot = document.querySelector('.cursor-dot');
+        const cursorOutline = document.querySelector('.cursor-outline');
+        const hoverTriggers = document.querySelectorAll('.hover-trigger');
+
+        window.addEventListener('mousemove', (e) => {
+            const posX = e.clientX;
+            const posY = e.clientY;
+
+            cursorDot.style.left = `${posX}px`;
+            cursorDot.style.top = `${posY}px`;
+
+            // Smooth trailing effect for outline
+            cursorOutline.animate({
+                left: `${posX}px`,
+                top: `${posY}px`
+            }, { duration: 500, fill: "forwards" });
+        });
+
+        hoverTriggers.forEach(trigger => {
+            trigger.addEventListener('mouseenter', () => document.body.classList.add('cursor-hover'));
+            trigger.addEventListener('mouseleave', () => document.body.classList.remove('cursor-hover'));
+        });
+
+        // --- WebGL Liquid Background (Three.js Shader) ---
+        const canvas = document.querySelector('#webgl-canvas');
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+        camera.position.z = 1;
+        const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        
+        // Liquid noise shader
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                uMouse: { value: new THREE.Vector2(0.5, 0.5) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec2 uResolution;
+                uniform vec2 uMouse;
+                varying vec2 vUv;
+
+                // Simplex 2D noise
+                vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
+                float snoise(vec2 v){
+                    const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+                    vec2 i  = floor(v + dot(v, C.yy) );
+                    vec2 x0 = v -   i + dot(i, C.xx);
+                    vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+                    vec4 x12 = x0.xyxy + C.xxzz;
+                    x12.xy -= i1;
+                    i = mod(i, 289.0);
+                    vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+                    vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+                    m = m*m; m = m*m;
+                    vec3 x = 2.0 * fract(p * C.www) - 1.0;
+                    vec3 h = abs(x) - 0.5;
+                    vec3 ox = floor(x + 0.5);
+                    vec3 a0 = x - ox;
+                    m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+                    vec3 g;
+                    g.x  = a0.x  * x0.x  + h.x  * x0.y;
+                    g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+                    return 130.0 * dot(m, g);
+                }
+
+                void main() {
+                    vec2 st = gl_FragCoord.xy / uResolution.xy;
+                    st.x *= uResolution.x / uResolution.y;
+                    
+                    // Mouse interaction
+                    float dist = distance(st, vec2(uMouse.x * (uResolution.x/uResolution.y), 1.0 - uMouse.y));
+                    float mouseEffect = exp(-dist * 3.0);
+
+                    vec2 pos = st * 3.0;
+                    float n = snoise(pos + uTime * 0.1);
+                    n += 0.5 * snoise(pos * 2.0 - uTime * 0.15);
+                    
+                    // Liquid warp based on noise & mouse
+                    vec2 warp = st + vec2(n * 0.1);
+                    warp += (st - vec2(uMouse.x, 1.0-uMouse.y)) * mouseEffect * 0.1;
+                    
+                    float finalNoise = snoise(warp * 4.0 + uTime * 0.2);
+                    
+                    // Color mapping (Dark with gold/champagne hints)
+                    vec3 colorDark = vec3(0.02, 0.02, 0.03);
+                    vec3 colorLight = vec3(0.1, 0.08, 0.05); // Subtle gold hint
+                    
+                    vec3 finalColor = mix(colorDark, colorLight, smoothstep(-1.0, 1.0, finalNoise));
+                    
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Mouse tracking for WebGL
+        window.addEventListener('mousemove', (e) => {
+            material.uniforms.uMouse.value.x = e.clientX / window.innerWidth;
+            material.uniforms.uMouse.value.y = e.clientY / window.innerHeight;
+        });
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        const clock = new THREE.Clock();
+        function animateWebGL() {
+            material.uniforms.uTime.value = clock.getElapsedTime();
+            renderer.render(scene, camera);
+            requestAnimationFrame(animateWebGL);
+        }
+        animateWebGL();
+
+        // --- GSAP Animations ---
+        gsap.registerPlugin(ScrollTrigger);
+
+        // 1. Initial Loader (4-Column Clip Down)
+        const tlLoader = gsap.timeline();
+        
+        tlLoader.to('#loaderText', {
+            opacity: 0,
+            scale: 1.5,
+            duration: 1.5,
+            ease: 'power3.inOut',
+            delay: 1
+        })
+        .to('.clip-col', {
+            scaleY: 0,
+            duration: 1.2,
+            stagger: 0.15,
+            ease: 'expo.inOut'
+        }, "-=1")
+        .set('#loader', { display: 'none' })
+        // Hero Content Reveal
+        .from('.gs-reveal', {
+            y: 50,
+            opacity: 0,
+            duration: 1,
+            stagger: 0.1,
+            ease: 'power3.out'
+        }, "-=0.5");
+
+        // 2. Parallax Image in Hero
+        gsap.to('.parallax-img', {
+            yPercent: 30,
+            ease: 'none',
+            scrollTrigger: {
+                trigger: 'body',
+                start: 'top top',
+                end: 'bottom top',
+                scrub: true
+            }
+        });
+
+        // 3. Staggered Scroll for Gallery (Columns)
+        gsap.from('.stag-col', {
+            y: 100,
+            opacity: 0,
+            duration: 1,
+            stagger: 0.2,
+            ease: 'power3.out',
+            scrollTrigger: {
+                trigger: '#cuisine',
+                start: 'top 70%',
+            }
+        });
+
+        // 4. Magnetic Button Effect
+        const magneticBtns = document.querySelectorAll('.magnetic-btn');
+        magneticBtns.forEach(btn => {
+            btn.addEventListener('mousemove', (e) => {
+                const rect = btn.getBoundingClientRect();
+                const x = e.clientX - rect.left - rect.width / 2;
+                const y = e.clientY - rect.top - rect.height / 2;
+                
+                gsap.to(btn, {
+                    x: x * 0.3,
+                    y: y * 0.3,
+                    duration: 0.5,
+                    ease: 'power2.out'
+                });
+            });
+            
+            btn.addEventListener('mouseleave', () => {
+                gsap.to(btn, {
+                    x: 0,
+                    y: 0,
+                    duration: 0.5,
+                    ease: 'elastic.out(1, 0.3)'
+                });
+            });
+        });
+
+    </script>
+</body>
+</html>
